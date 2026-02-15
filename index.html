@@ -3,33 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D SNAKE MULTIPLAYER - AI & TOUCH</title>
+    <title>SMAI 3D SNAKE - AI & VOICE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Assistant', sans-serif; touch-action: none; }
         canvas { display: block; }
         .ui-panel { position: fixed; z-index: 100; pointer-events: none; }
-        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); pointer-events: auto; }
+        .glass { background: rgba(0, 20, 0, 0.8); backdrop-filter: blur(12px); border: 1px solid #0f0; pointer-events: auto; color: #0f0; }
         .speaking-indicator { width: 12px; height: 12px; border-radius: 50%; background: #4ade80; display: inline-block; margin-right: 5px; animation: pulse 1s infinite; }
         @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.5; } 100% { transform: scale(1); opacity: 1; } }
     </style>
 </head>
 <body>
 
-    <!-- UI Overlay -->
     <div class="ui-panel top-4 right-4 glass p-4 rounded-xl text-white w-64">
-        <h2 class="text-xl font-bold mb-2 text-blue-400 border-b border-slate-700 pb-1 text-center">שחקנים אונליין</h2>
-        <div id="players-list" class="space-y-2 text-sm">
-            <!-- שחקנים יתווספו כאן -->
-        </div>
-        <div class="mt-4 text-[10px] text-slate-400 text-center">
-            השתמש ב-2 אצבעות לזום | החלק לסיבוב
-        </div>
+        <h2 class="text-xl font-bold mb-2 text-green-400 border-b border-green-900 pb-1 text-center">SMAI - שחקנים</h2>
+        <div id="players-list" class="space-y-2 text-sm text-green-500">
+            </div>
     </div>
 
     <div class="ui-panel bottom-4 right-4 flex gap-4">
-        <button id="mic-toggle" class="glass p-4 rounded-full hover:bg-slate-700 transition-all shadow-lg">
+        <button id="mic-toggle" class="glass p-4 rounded-full hover:bg-green-900 transition-all shadow-lg">
             <svg id="mic-icon" xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
             </svg>
@@ -37,7 +32,7 @@
     </div>
 
     <video id="hand-video" class="hidden" autoplay playsinline muted></video>
-    <video id="webcam-preview" class="fixed bottom-4 left-4 w-40 h-32 rounded-xl border-2 border-blue-500 transform scaleX(-1) object-cover z-50" autoplay playsinline muted></video>
+    <video id="webcam-preview" class="fixed bottom-4 left-4 w-40 h-32 rounded-xl border-2 border-green-500 transform scaleX(-1) object-cover z-50" autoplay playsinline muted></video>
 
     <script type="importmap">
     {
@@ -51,257 +46,129 @@
 
     <script type="module">
         import { initializeApp } from "firebase/app";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "firebase/auth";
+        import { getAuth, signInAnonymously } from "firebase/auth";
         import { getFirestore, doc, setDoc, onSnapshot, collection, deleteDoc, serverTimestamp } from "firebase/firestore";
         import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
-        // --- Firebase Config ---
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // --- Firebase Config - תכניס את הפרטים שלך כאן ---
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_ID",
+            appId: "YOUR_APP_ID"
+        };
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'snake-3d-mp';
+        const appId = 'smai-snake-world';
 
         let user = null;
         let handLandmarker;
         let isMicOn = false;
         let audioContext, analyser, dataArray;
-        let gameStatePlayers = {};
+        let playerMeshes = {};
         
         // --- Three.js Setup ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x020617);
+        scene.background = new THREE.Color(0x000500);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0x3b82f6, 1);
-        dirLight.position.set(5, 15, 7);
-        scene.add(dirLight);
-
-        const grid = new THREE.GridHelper(100, 50, 0x1e293b, 0x0f172a);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const grid = new THREE.GridHelper(100, 50, 0x00ff00, 0x002200);
         scene.add(grid);
+        camera.position.set(0, 30, 30);
+        camera.lookAt(0,0,0);
 
-        // --- Camera & Interaction State ---
-        let camDistance = 25;
-        let camRotationY = 0;
-        let camRotationX = Math.PI / 4;
-        let lastTouchDist = 0;
-        let lastTouchPos = { x: 0, y: 0 };
+        let mySnakeData = { body: [], color: 0x00ff00 };
 
-        const playerMeshes = {};
-        let mySnakeData = { body: [], color: Math.random() * 0xffffff };
-
-        // --- Touch Event Listeners ---
-        window.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 2) {
-                lastTouchDist = Math.hypot(
-                    e.touches[0].pageX - e.touches[1].pageX,
-                    e.touches[0].pageY - e.touches[1].pageY
-                );
-            } else if (e.touches.length === 1) {
-                lastTouchPos = { x: e.touches[0].pageX, y: e.touches[0].pageY };
-            }
-        }, { passive: false });
-
-        window.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 2) {
-                const dist = Math.hypot(
-                    e.touches[0].pageX - e.touches[1].pageX,
-                    e.touches[0].pageY - e.touches[1].pageY
-                );
-                const delta = dist - lastTouchDist;
-                camDistance = Math.max(5, Math.min(60, camDistance - delta * 0.1));
-                lastTouchDist = dist;
-            } else if (e.touches.length === 1) {
-                const deltaX = e.touches[0].pageX - lastTouchPos.x;
-                const deltaY = e.touches[0].pageY - lastTouchPos.y;
-                camRotationY -= deltaX * 0.01;
-                camRotationX = Math.max(0.1, Math.min(Math.PI / 2 - 0.1, camRotationX + deltaY * 0.01));
-                lastTouchPos = { x: e.touches[0].pageX, y: e.touches[0].pageY };
-            }
-            e.preventDefault();
-        }, { passive: false });
-
-        // --- Firebase Auth & Sync ---
-        async function initAuth() {
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (err) { console.error("Auth error:", err); }
-
-            onAuthStateChanged(auth, (u) => {
-                user = u;
-                if (user) setupSync();
-            });
+        // --- Auth & Sync ---
+        async function initGame() {
+            const u = await signInAnonymously(auth);
+            user = u.user;
+            setupSync();
+            initVision();
+            setupMic();
         }
 
         function setupSync() {
-            const playersCol = collection(db, 'artifacts', appId, 'public', 'data', 'players');
+            const playersCol = collection(db, 'players');
             onSnapshot(playersCol, (snapshot) => {
-                const currentUids = new Set();
-                const updated = {};
+                const currentIds = [];
                 snapshot.forEach(doc => {
                     const data = doc.data();
-                    currentUids.add(data.uid);
-                    updated[data.uid] = data;
+                    currentIds.push(data.uid);
                     updateSnakeMesh(data);
                 });
-                gameStatePlayers = updated;
+                
                 Object.keys(playerMeshes).forEach(uid => {
-                    if (!currentUids.has(uid)) {
-                        scene.remove(playerMeshes[uid].group);
+                    if (!currentIds.includes(uid)) {
+                        scene.remove(playerMeshes[uid]);
                         delete playerMeshes[uid];
                     }
                 });
-                renderUI();
-            }, err => console.error(err));
-
-            window.addEventListener('beforeunload', async () => {
-                if (user) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', user.uid));
+                renderUI(snapshot);
             });
         }
 
         function updateSnakeMesh(data) {
             if (!playerMeshes[data.uid]) {
-                const group = new THREE.Group();
-                playerMeshes[data.uid] = { group, segments: [] };
-                scene.add(group);
+                const mesh = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 16), new THREE.MeshPhongMaterial({ color: 0x00ff00 }));
+                scene.add(mesh);
+                playerMeshes[data.uid] = mesh;
             }
-            const pInfo = playerMeshes[data.uid];
-            const body = data.body || [];
-            while (pInfo.segments.length < body.length) {
-                const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), new THREE.MeshPhongMaterial({ color: data.color || 0x3b82f6 }));
-                pInfo.group.add(mesh);
-                pInfo.segments.push(mesh);
-            }
-            while (pInfo.segments.length > body.length) { pInfo.group.remove(pInfo.segments.pop()); }
-            body.forEach((pos, i) => {
-                if (pInfo.segments[i]) {
-                    pInfo.segments[i].position.set(pos.x, 0.45, pos.z);
-                    if (data.isSpeaking) {
-                        pInfo.segments[i].material.emissive.setHex(0x4ade80);
-                        pInfo.segments[i].material.emissiveIntensity = 0.5;
-                    } else {
-                        pInfo.segments[i].material.emissive.setHex(0x000000);
-                    }
-                }
-            });
+            playerMeshes[data.uid].position.set(data.x || 0, 1, data.z || 0);
         }
 
-        // --- Logic & Loop ---
         async function initVision() {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
             handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                    delegate: "GPU"
-                },
+                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "GPU" },
                 runningMode: "VIDEO", numHands: 1
             });
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            const video = document.getElementById('hand-video');
-            const preview = document.getElementById('webcam-preview');
-            video.srcObject = stream; preview.srcObject = stream;
-            video.onloadedmetadata = () => { video.play(); requestAnimationFrame(gameLoop); };
+            document.getElementById('hand-video').srcObject = stream;
+            document.getElementById('webcam-preview').srcObject = stream;
+            requestAnimationFrame(gameLoop);
         }
 
-        let lastVideoTime = -1;
         function gameLoop() {
             const video = document.getElementById('hand-video');
-            if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
-                lastVideoTime = video.currentTime;
-                try {
-                    const detections = handLandmarker.detectForVideo(video, performance.now());
-                    if (detections.landmarks && detections.landmarks.length > 0) {
-                        const tip = detections.landmarks[0][8];
-                        moveSnake((tip.x - 0.5) * -60, (tip.y - 0.5) * 60);
-                    }
-                } catch (e) {}
-            }
-
-            // Camera following with rotation & distance
-            if (user && playerMeshes[user.uid]) {
-                const head = playerMeshes[user.uid].segments[0];
-                if (head) {
-                    const offsetX = camDistance * Math.sin(camRotationY) * Math.cos(camRotationX);
-                    const offsetY = camDistance * Math.sin(camRotationX);
-                    const offsetZ = camDistance * Math.cos(camRotationY) * Math.cos(camRotationX);
-
-                    const targetPos = new THREE.Vector3(
-                        head.position.x + offsetX,
-                        head.position.y + offsetY,
-                        head.position.z + offsetZ
-                    );
-                    camera.position.lerp(targetPos, 0.1);
-                    camera.lookAt(head.position);
+            if (video.readyState >= 2) {
+                const detections = handLandmarker.detectForVideo(video, performance.now());
+                if (detections.landmarks && detections.landmarks[0]) {
+                    const x = (detections.landmarks[0][8].x - 0.5) * -60;
+                    const z = (detections.landmarks[0][8].y - 0.5) * 60;
+                    if (user) setDoc(doc(db, 'players', user.uid), { uid: user.uid, x, z, lastSeen: serverTimestamp() }, { merge: true });
                 }
             }
-
             renderer.render(scene, camera);
             requestAnimationFrame(gameLoop);
         }
 
-        async function moveSnake(tx, tz) {
-            if (!user) return;
-            mySnakeData.body.unshift({ x: tx, z: tz });
-            if (mySnakeData.body.length > 25) mySnakeData.body.pop();
-            let speaking = false;
-            if (isMicOn && analyser) {
-                analyser.getByteFrequencyData(dataArray);
-                speaking = (dataArray.reduce((a, b) => a + b) / dataArray.length) > 35;
-            }
-            const myDoc = doc(db, 'artifacts', appId, 'public', 'data', 'players', user.uid);
-            await setDoc(myDoc, { uid: user.uid, body: mySnakeData.body, color: mySnakeData.color, isSpeaking: speaking, lastSeen: serverTimestamp() }, { merge: true });
-        }
-
         function setupMic() {
-            const btn = document.getElementById('mic-toggle');
-            const icon = document.getElementById('mic-icon');
-            btn.onclick = async () => {
-                if (!isMicOn) {
-                    try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                        audioContext = new AudioContext();
-                        const source = audioContext.createMediaStreamSource(stream);
-                        analyser = audioContext.createAnalyser();
-                        dataArray = new Uint8Array(analyser.frequencyBinCount);
-                        source.connect(analyser);
-                        isMicOn = true;
-                        icon.classList.replace('text-red-500', 'text-green-400');
-                    } catch (e) { alert("גישה למיקרופון נדחתה."); }
-                } else {
-                    isMicOn = false;
-                    icon.classList.replace('text-green-400', 'text-red-500');
-                }
+            document.getElementById('mic-toggle').onclick = async () => {
+                isMicOn = !isMicOn;
+                document.getElementById('mic-icon').style.color = isMicOn ? "#4ade80" : "#ef4444";
+                if (isMicOn) await navigator.mediaDevices.getUserMedia({ audio: true });
             };
         }
 
-        function renderUI() {
+        function renderUI(snapshot) {
             const list = document.getElementById('players-list');
-            list.innerHTML = Object.keys(gameStatePlayers).map(uid => {
-                const p = gameStatePlayers[uid];
-                const isMe = uid === user?.uid;
-                return `<div class="flex items-center justify-between p-2 rounded bg-slate-800/60 border border-slate-700/50">
-                    <span class="${isMe ? 'text-blue-300 font-bold' : 'text-slate-200'}">${isMe ? '⭐ אני' : 'שחקן ' + uid.slice(0,4)}</span>
-                    ${p.isSpeaking ? '<span class="speaking-indicator"></span>' : ''}
-                </div>`;
-            }).join('');
+            list.innerHTML = "";
+            snapshot.forEach(doc => {
+                const d = doc.data();
+                list.innerHTML += `<div>• ${d.uid === user.uid ? 'אני' : 'שחקן'}</div>`;
+            });
         }
 
-        window.onresize = () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        };
-
-        initAuth(); initVision(); setupMic();
+        initGame();
     </script>
 </body>
 </html>
